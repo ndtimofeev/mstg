@@ -84,7 +84,7 @@ local ALLOCATE = function( itbl )
     return val
 end
 local BLACKHOLE_TABLE = {
-    name = "BLACKHOLE_TABLE",
+    name = "BLACKHOLE",
 
     enter = function( self )
         error "BREAK ON THROUGH TO THE BLACKHOLE!!!"
@@ -92,7 +92,7 @@ local BLACKHOLE_TABLE = {
 }
 
 local EXIT_CODE_TABLE = {
-    name = "EXIT_CODE_TABLE",
+    name = "EXIT",
     enter = function( self )
         local heapPtr = POP()
         local constr  = POP()
@@ -135,7 +135,7 @@ local INDIRECTION_TABLE = {
 }
 
 local DROP_STACK_ALL_TABLE = {
-    name = "DROP_STACK_ALL_TABLE",
+    name = "DROP_STACK_ALL",
 
     enter = function( cont )
         POP()
@@ -151,7 +151,7 @@ local DROP_STACK_ALL_TABLE = {
 DROP_STACK_ALL_TABLE[1] = DROP_STACK_ALL_TABLE
 
 local DROP_STACK_VAR_TABLE = {
-    name = "DROP_STACK_VAR_TABLE",
+    name = "DROP_STACK_VAR",
 
     enter = function( cont )
         local heapPtr = POP()
@@ -173,7 +173,7 @@ local DROP_STACK_VAR_TABLE = {
 DROP_STACK_VAR_TABLE[1] = DROP_STACK_VAR_TABLE
 
 local UPDATE_NEXT_TABLE = {
-    name = "UPDATE_NEXT_TABLE",
+    name = "UPDATE_NEXT",
 
     enter = function( cont )
         local heapPtr = ARGUMENTS_STACK[#ARGUMENTS_STACK]
@@ -212,7 +212,7 @@ local UPDATE_NEXT_TABLE = {
 UPDATE_NEXT_TABLE[1] = UPDATE_NEXT_TABLE
 
 local SWITCH_TABLE = {
-    name = "SWITCH_TABLE",
+    name = "SWITCH",
     enter = function( cont )
         return POP_CONTROL()()
     end
@@ -220,7 +220,7 @@ local SWITCH_TABLE = {
 SWITCH_TABLE[1] = SWITCH_TABLE
 
 local VECTOR_TABLE = {
-    name = "VECTOR_TABLE",
+    name = "VECTOR",
 
     enter = function( cont )
         local heapPtr = POP()
@@ -233,7 +233,7 @@ local VECTOR_TABLE = {
 VECTOR_TABLE[1] = VECTOR_TABLE
 
 local VECTOR_WITH_VAR_TABLE = {
-    name = "VECTOR_WITH_VAR_TABLE",
+    name = "VECTOR_WITH_VAR",
 
     enter = function( cont )
         local heapPtr = POP()
@@ -258,7 +258,7 @@ local VECTOR_WITH_VAR_TABLE = {
 VECTOR_WITH_VAR_TABLE[1] = VECTOR_WITH_VAR_TABLE
 
 local VECTOR_WITH_EMPTY_TABLE = {
-    name = "VECTOR_WITH_EMPTY_TABLE",
+    name = "VECTOR_WITH_EMPTY",
 
     enter = function( cont )
         local heapPtr = POP()
@@ -329,7 +329,7 @@ local THUNK_TABLE = {
 }
 
 local APPLY_THUNK_TABLE = {
-    name = "APPLY_THUNK_TABLE",
+    name = "APPLY_THUNK",
 
     enter = function( thunk )
         PUSH_CONTROL( thunk )
@@ -346,7 +346,7 @@ local APPLY_THUNK_TABLE = {
 }
 
 local APPLY_TABLE = {
-    name = "APPLY_TABLE",
+    name = "APPLY",
 
     enter = function( thunk )
         for i = #thunk, 3, -1 do

@@ -55,15 +55,10 @@ map = \n {f,xs} ->
 			} in Cons {fy,mfy};
 	};
 
-length = \n {xs} -> lengthRec {xs,zero};
-
-lengthRec = \n {xs,acc} -> 
-	case xs of {
-		Nil {} 		-> acc;
-		Cons {y,ys} -> case ( addIntB {acc, one } ) of {
-			newAcc -> lengthRec {ys,newAcc};
-		};
-	};
+length = \n {xs} ->
+	let {
+		f = \n {} -> addIntB {one};
+	} in foldl' {f,zero,xs};
 	
 main = \n {} ->
 	let {

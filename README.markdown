@@ -1,4 +1,4 @@
-The Misterious Spineless Tagless G-machine
+The Mysterious Spineless Tagless G-machine
 ==========================================
 
 MSTG is an translator from simple lazy functional STG-machine language to a Lua
