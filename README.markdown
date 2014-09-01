@@ -7,23 +7,22 @@ language.
 Motivation
 ----------
 
-#. Reading too much papers about lazy language implementation.
-#. Writing tools for running lazy functional language as embeded scripting
-   language.
-#. Investigation platform specific optimisation and implementation details for
+* Reading too much papers about lazy language implementation.
+* Writing tools for running lazy functional language as embeded scripting language.
+* Investigation platform specific optimisation and implementation details for
 STG.
 
 What work
 ---------
 
-#. Graph rewriting.
-#. Partial apply.
-#. Factorial computation.
+* Graph rewriting.
+* Partial apply.
+* Factorial computation.
 
 What does not work
 ------------------
 
-#. Indentation based input language syntax.
+* Indentation based input language syntax.
 
 Usage
 -----
