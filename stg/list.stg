@@ -1,0 +1,75 @@
+addIntB = \n {a,b} ->
+	case a of {
+		I {a#} -> case b of {
+			I {b#} -> case (addInt## {a#,b#})of {
+				c#-> I {c#};
+			};
+		};
+	};
+
+mulIntB = \n {a,b} ->
+	case a of {
+		I {a#} -> case b of {
+			I {b#} -> case(mulInt## {a#,b#})of {
+				c#-> I {c#};
+			};
+		};
+	};
+
+eqIntB = \n {a,b} ->
+	case a of {
+		I {a#} -> case b of {
+			I {b#} -> case(subInt## {a#,b#})of {
+				0# -> True {};
+				_  -> False {};
+			};
+		};
+	};
+
+nil = \u {} -> Nil {};
+true = \u {} -> True {};
+false = \u {} -> False {};
+one = \u {} -> I {1#};
+zero = \u {} -> I {0#};
+
+range = \n {l,h} ->
+	let {
+		rangeRec = \n {l1} ->
+			case ( eqIntB {l1,h} ) of {
+				True {}  -> Cons {l1,nil};
+				False {} -> let {
+					l2 = \u {} -> addIntB {one,l1};
+					tail = \u {} -> rangeRec {l2};
+--					tail = \u {} -> case (addIntB {one,l1}) of { l2 -> rangeRec {l2}; };
+				} in Cons {l1,tail};
+			};
+	} in rangeRec {l};
+
+map = \n {f,xs} ->
+	case xs of {
+		Nil {} 		-> Nil {};
+		Cons {y,ys} ->
+			let {
+				fy = \u {} -> f {y};
+				mfy = \u {} -> map {f,ys};
+			} in Cons {fy,mfy};
+	};
+
+length = \n {xs} -> lengthRec {xs,zero};
+
+lengthRec = \n {xs,acc} -> 
+	case xs of {
+		Nil {} 		-> acc;
+		Cons {y,ys} -> case ( addIntB {acc, one } ) of {
+			newAcc -> lengthRec {ys,newAcc};
+		};
+	};
+	
+main = \n {} ->
+	let {
+		v2 = \u {} -> I {1000000#};
+		v3 = \u {} -> I {3#};
+		xs = \n {} -> range {one,v2};
+		f1 = \n {} -> mulIntB {v3};
+		ys = \n {} -> map {f1,xs};
+	} in length {ys};

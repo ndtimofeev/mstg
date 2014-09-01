@@ -1,0 +1,5 @@
+val = \n {} -> I {2#};
+
+val2 = \u {} -> val;
+
+main = \n {} -> addIntB {val2, val2};

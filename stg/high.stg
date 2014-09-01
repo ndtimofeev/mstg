@@ -1,0 +1,30 @@
+foldl' = \n {f,acc,xs} ->
+	case xs of {
+		Nil {} 		-> acc;
+		Cons {y,ys} -> case ( f {acc,y} ) of {
+			nacc -> foldl' {f,nacc,ys};
+		};
+	};
+
+foldl = \n {f,acc,xs} ->
+	case xs of {
+		Nil {} 		-> acc;
+		Cons {y,ys} -> let {
+            nacc = \u {} -> f {acc,y};
+		} in foldl {f,nacc,ys};
+	};
+
+nil = \u {} -> Nil {};
+one = \u {} -> I {1#};
+
+range = \n {low,high} ->
+	let { 
+		rangeRec = \n {l} ->
+			case ( eqIntB {l,high} ) of {
+				True {}  -> Cons {l,nil};
+				False {} -> let {
+					l2 = \u {} -> addIntB {one,l};
+					tail = \u {} -> rangeRec {l2};
+				} in Cons {l,tail};
+			};
+	} in rangeRec {low};

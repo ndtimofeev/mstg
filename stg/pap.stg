@@ -1,0 +1,11 @@
+f1 = \n {x,y} ->
+	let {
+		s  = \u {} -> addIntB {x,y};
+		f2 = \n {z} -> mulIntB {s,z};
+	} in f2;
+
+v1 = \u {} -> I {2#};
+v2 = \u {} -> I {1#};
+v3 = \u {} -> I {5#};
+
+main = \u {} -> f1 {v1,v2,v3};

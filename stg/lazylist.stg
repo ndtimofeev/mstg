@@ -1,0 +1,56 @@
+addIntB = \n {a,b} ->
+	case a of {
+		I {a#} -> case b of {
+			I {b#} -> case (addInt## {a#,b#})of {
+				c# -> I {c#};
+			};
+		};
+	};
+
+subIntB = \n {a,b} ->
+	case a of {
+		I {a#} -> case b of {
+			I {b#} -> case (subInt## {a#,b#})of {
+				c# -> I {c#};
+			};
+		};
+	};
+
+eqIntB = \n {a,b} ->
+	case a of {
+		I {a#} -> case b of {
+			I {b#} -> case(subInt## {a#,b#})of {
+				0# -> True {};
+				_  -> False {};
+			};
+		};
+	};
+
+one = \u {} -> I {1#};
+zero = \u {} -> I {0#};
+
+infiniteList = \n {n} ->
+	let {
+		nextN   = \n {} -> addIntB {n,one};
+		nextVal = \n {} -> infiniteList {nextN};
+	} in Cons {n,nextVal};
+
+take = \n {n,xs} ->
+	let {
+		condition = \n {} -> eqIntB {n,zero};
+	} in case condition of {
+		True {}  -> Nil {};
+		False {} -> case xs of {
+			Nil {} 		-> Nil {};
+			Cons {h,hs} -> let {
+				nextVal = \n {} -> subIntB {n,one};
+				nextTail = \n {} -> take {nextVal,hs};
+			} in Cons {h,nextTail};
+		};
+	};
+
+main = \u {} ->
+	let {
+		il = \u {} -> infiniteList {one};
+		val = \u {} -> I {1000#};
+	} in take {val,il};

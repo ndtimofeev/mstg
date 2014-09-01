@@ -1,0 +1,14 @@
+fact1 = \n {n} ->
+	let {
+		xs = \u {} -> range {one,n};
+	} in foldl' {mulIntB,one,xs};
+
+fact2 = \n {n} ->
+	let {
+		xs = \u {} -> range {one,n};
+	} in foldl {mulIntB,one,xs};
+
+main = \n {} ->
+	let {
+		v = \u {} -> I {19#};
+	} in fact2 {v};

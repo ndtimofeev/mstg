@@ -1,0 +1,18 @@
+v = \u {} -> I {1#};
+v1 = \u {} -> I {2#};
+
+addIntB = \n {a,b} ->
+	case a of {
+		I {a#} -> case b of {
+			I {b#} -> case ( addInt## {a#, b#} ) of {
+				c# -> I {c#};
+			};
+		};
+	};
+
+main = \n {} ->
+	let {
+		val2 = \n {} -> addIntB {v, v1};
+		val = \u {} -> addIntB {v, val2};
+	} in addIntB {val, val};
+
