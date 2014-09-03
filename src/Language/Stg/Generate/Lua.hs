@@ -4,6 +4,7 @@ module Language.Stg.Generate.Lua where
 import Prelude hiding ( EQ )
 
 import Data.Char
+import Data.List
 
 -- mtl
 import Control.Monad.Reader
@@ -230,8 +231,11 @@ lambdaAbstractionGen argv gen = createNamespace $ do
     blck     <- gen
     return $ case argv of
         []   -> callFunByName "FUNCTION0" [EFunDef (FunBody argvRefs False blck)]
-        _:[] -> callFunByName "FUNCTION1" [EFunDef (FunBody argvRefs False blck)]
-        _    -> callFunByName "FUNCTION"  [num (length argv), EFunDef (FunBody argvRefs False blck)]
+        _ -> callFunByName "FUNCTION0" [EFunDef (FunBody [] False (argvRefs `lassign` (replicate (length argvRefs) (callFunByName "POP" [])) `prependBlock` blck))]
+    -- return $ case argv of
+    --     []   -> callFunByName "FUNCTION0" [EFunDef (FunBody argvRefs False blck)]
+    --     _:[] -> callFunByName "FUNCTION1" [EFunDef (FunBody argvRefs False blck)]
+    --     _    -> callFunByName "FUNCTION"  [num (length argv), EFunDef (FunBody argvRefs False blck)]
 
 exprGen :: StgExpr -> Generate Block
 exprGen expr = case expr of
