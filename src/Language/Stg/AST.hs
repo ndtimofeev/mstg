@@ -146,7 +146,7 @@ cutAltsTransform = everywhere $ mkT
     where
         cutAltsTransform' :: [(Pattern a b, StgExpr)] -> [(Pattern a b, StgExpr)]
         cutAltsTransform' alts = case alts of
-            []                     -> [(Empty, ThrowExpr "pattern match fail")]
+            []                     -> [] -- [(Empty, ThrowExpr "pattern match fail")]
             (x:xs)
                 | (SPat _, _) <- x -> (x:cutAltsTransform' xs)
                 | otherwise        -> [x]

@@ -1,4 +1,5 @@
 -- base
+import Control.Exception
 import Control.Monad
 import Control.Category hiding ((.), id)
 
@@ -28,14 +29,14 @@ import Language.Lua.PrettyPrinter
 -- internal
 import Language.Stg.AST
 import Language.Stg.Generate.Lua
+import qualified Language.Stg.Generate.Lua.RTS as RTS
 import Language.Stg.Parser.Simple
 import Language.Stg.PrettyPrinter.Naive
 
-data ArgumentStack = GlobalStack | LocalStack
-    deriving Show
-
-data OutputType = LuaCode {- [GeneratorConfig] -} | Effect | StgCode [StgPrinterConf]
-    deriving Show
+data OutputType
+    = LuaCode { evalCode :: Bool, codeGenConf :: [GeneratorConfig] }
+    | StgCode [StgPrinterConf]
+    deriving (Eq, Show)
 
 data AppOptions = AppOptions
     { output               :: Handle
@@ -44,12 +45,13 @@ data AppOptions = AppOptions
     , preprocessorTable    :: [(String, String)]
     , stgToStgPipe         :: [Binding] -> [Binding]
     , stgNormalizationPipe :: [Binding] -> [Binding]
+    , readRTSFiles         :: IO (String, String)
     }
 
 defaultOption :: AppOptions
 defaultOption = AppOptions
     { output = stdout
-    , outputType = LuaCode
+    , outputType = LuaCode False []
     , entryThunk = "main"
     , stgToStgPipe =
             cutAltsTransform >>>            -- Cut inaccessible case alternative
@@ -59,6 +61,7 @@ defaultOption = AppOptions
             reverse                         -- Reverse bindings list
     , stgNormalizationPipe = cutAltsTransform >>> singleCaseTransform
     , preprocessorTable = [("BACKPORT", "1"), ("SIMPLEALLOC", "1")]
+    , readRTSFiles = return (RTS.rts, RTS.primops)
     }
 
 options :: [OptDescr (AppOptions -> IO AppOptions)]
@@ -74,7 +77,12 @@ options =
             "write compiler output to FILE"
 
     , Option "e" ["eval"]
-            (NoArg $ \opts -> return $ opts { outputType = Effect })
+            (NoArg $ \opts -> do
+                        let oTypeGen = case outputType opts of
+                                StgCode _      -> appFailure "Can't eval and print stg simultaneously"
+                                LuaCode _ cfgs -> return $ LuaCode True cfgs
+                        oType <- oTypeGen
+                        return $ opts { outputType = oType })
             "eval program immediate"
 
     , Option "" ["print-stg"]
@@ -92,6 +100,18 @@ options =
     , Option "T" ["trace"]
             (NoArg $ \opts -> return $ opts { preprocessorTable = ("OTRACE", "1") : preprocessorTable opts })
             "trace entered objects"
+
+    , Option "" ["custom-rts"]
+            (ReqArg (\path opts ->
+                        let fsRTSRead = do
+                                v1 <- readFile (path ++ "/rts.lua")
+                                v2 <- readFile (path ++ "/primops.lua")
+                                return (v1, v2)
+
+                            fsRTSReadException :: IOException -> IO a
+                            fsRTSReadException _ = appFailure "Bad RTS reading"
+                        in return $ opts { readRTSFiles = catch fsRTSRead fsRTSReadException }) "PATH")
+            "path to dir with custom rts files"
 
     , Option "S" ["statistics"]
             (NoArg $ \opts -> return $ opts { preprocessorTable = ("RTSINFO", "1") : preprocessorTable opts })
@@ -123,21 +143,29 @@ options =
                 putStrLn appUsageInfo
                 exitSuccess
 
+appFailure :: String -> IO a
+appFailure str = do
+    hPutStrLn stderr message
+    exitFailure
+    where
+        message
+            | "" == str = appUsageInfo
+            | otherwise = unlines [ str, "" ] ++ appUsageInfo
+
 appUsageInfo :: String
 appUsageInfo = usageInfo ("Usage: " ++ appName ++ " [options] [STGFILES]\n") options
     where
         appName = unsafePerformIO $ getProgName
 
 compilerOpts :: [String] -> IO (AppOptions, [String])
-compilerOpts argv = case getOpt' RequireOrder options argv of
+compilerOpts argv = case getOpt' Permute options argv of
     (trans, argv', [], []) -> do
         opt <- foldM (\opt trns -> trns opt) defaultOption trans
         return (opt, argv')
     (_, _, unrecs, errs)   -> do
         forM_ unrecs $ \o -> putStrLn $ "unrecognized option: " ++ o
         forM_ errs $ \e -> putStrLn e
-        putStrLn appUsageInfo
-        exitFailure
+        appFailure ""
 
 compilerLuaCode :: String -> [Binding] -> AppOptions -> String
 compilerLuaCode rts bindings opts = intercalate "\n\n"
@@ -150,10 +178,9 @@ compilerLuaCode rts bindings opts = intercalate "\n\n"
 main :: IO ()
 main = do
     (opt,argv)  <- getArgs >>= compilerOpts
-    rts         <- readFile "lua/rts.lua"
-    prim        <- readFile "lua/primops.lua"
+    (rts,prim)  <- readRTSFiles opt
     bs          <- case argv of
-        []    -> putStrLn appUsageInfo >> exitFailure
+        []    -> appFailure ""
 
         ["-"] -> do
             txt <- getContents
@@ -169,11 +196,11 @@ main = do
     rts' <- runCpphs (defaultCpphsOptions { defines = preprocessorTable opt, boolopts = defaultBoolOptions { locations = False } }) "" rts
     let outCode = compilerLuaCode (intercalate "\n\n" [rts', prim]) bs opt
     case outputType opt of
-        LuaCode      -> hPutStrLn (output opt) outCode
-        Effect       -> do
+        LuaCode False _ -> hPutStrLn (output opt) outCode
+        LuaCode True _  -> do
             l <- newstate
             openlibs l
-            loadstring l outCode ""
+            _ <- loadstring l outCode ""
             call l 0 0
             close l
         StgCode cfgs -> hPutStrLn (output opt) $ pprintStg cfgs $ stgToStgPipe opt bs
