@@ -71,7 +71,7 @@ local PUSH = function( val )
 end
 
 local ALLOCATE = function( itbl )
-    local val = ALLOC( itbl )
+    local val = setmetatable( ALLOC(), itbl )
 
 #ifdef RTSINFO
     CONSTR_ALLOC = CONSTR_ALLOC + 1
@@ -83,6 +83,7 @@ local ALLOCATE = function( itbl )
 
     return val
 end
+
 local BLACKHOLE_TABLE = {
     name = "BLACKHOLE",
 
@@ -104,7 +105,7 @@ local EXIT_CODE_TABLE = {
         return heapPtr
     end
 }
-EXIT_CODE_TABLE[1] = EXIT_CODE_TABLE
+setmetatable( EXIT_CODE_TABLE, EXIT_CODE_TABLE )
 
 local POP_CONTROL = function()
     local val = RETURN_STACK[#RETURN_STACK]
@@ -121,7 +122,7 @@ local JUMP = function( cont )
 #ifdef OTRACE
     return cont
 #else
-    return cont[1].enter( cont )
+    return getmetatable( cont ).enter( cont )
 #endif
 end
 
@@ -130,7 +131,7 @@ local INDIRECTION_TABLE = {
 
     enter = function( thunk )
         INDIRECTION_COUNT = INDIRECTION_COUNT + 1
-        return JUMP( thunk[2] )
+        return JUMP( thunk[1] )
     end,
 }
 
@@ -148,7 +149,7 @@ local DROP_STACK_ALL_TABLE = {
         return JUMP( POP_CONTROL() )
     end
 }
-DROP_STACK_ALL_TABLE[1] = DROP_STACK_ALL_TABLE
+setmetatable( DROP_STACK_ALL_TABLE, DROP_STACK_ALL_TABLE )
 
 local DROP_STACK_VAR_TABLE = {
     name = "DROP_STACK_VAR",
@@ -170,7 +171,7 @@ local DROP_STACK_VAR_TABLE = {
         return JUMP( POP_CONTROL() )
     end
 }
-DROP_STACK_VAR_TABLE[1] = DROP_STACK_VAR_TABLE
+setmetatable( DROP_STACK_VAR_TABLE, DROP_STACK_VAR_TABLE )
 
 local UPDATE_NEXT_TABLE = {
     name = "UPDATE_NEXT",
@@ -183,7 +184,9 @@ local UPDATE_NEXT_TABLE = {
             local constr  = ARGUMENTS_STACK[#ARGUMENTS_STACK - 1]
             local j       = 1
 
-            for i = #ARGUMENTS_STACK - 1, #ARGUMENTS_STACK - constr.arity - 1, -1 do
+            setmetatable( nextVal, constr )
+
+            for i = #ARGUMENTS_STACK - 2, #ARGUMENTS_STACK - constr.arity - 1, -1 do
                 nextVal[j] = ARGUMENTS_STACK[i]
                 j = j + 1
             end
@@ -198,10 +201,10 @@ local UPDATE_NEXT_TABLE = {
 
             ARGUMENTS_STACK[#ARGUMENTS_STACK] = nextVal
         else
-            nextVal[1] = INDIRECTION_TABLE
-            nextVal[2] = heapPtr
+            setmetatable( nextVal, INDIRECTION_TABLE )
+            nextVal[1] = heapPtr
 
-            for i = 3, #nextVal do
+            for i = 2, #nextVal do
                 nextVal[i] = nil
             end
         end
@@ -209,7 +212,7 @@ local UPDATE_NEXT_TABLE = {
         return JUMP( POP_CONTROL() )
     end
 }
-UPDATE_NEXT_TABLE[1] = UPDATE_NEXT_TABLE
+setmetatable( UPDATE_NEXT_TABLE, UPDATE_NEXT_TABLE )
 
 local SWITCH_TABLE = {
     name = "SWITCH",
@@ -217,7 +220,15 @@ local SWITCH_TABLE = {
         return POP_CONTROL()()
     end
 }
-SWITCH_TABLE[1] = SWITCH_TABLE
+setmetatable( SWITCH_TABLE, SWITCH_TABLE )
+
+local LIGHT_FUNCTION_TABLE = {
+    name = "LIGHT_FUNCTION_TABLE",
+    enter = function( cont )
+        return cont()
+    end
+}
+debug.setmetatable( function() end, LIGHT_FUNCTION_TABLE )
 
 local VECTOR_TABLE = {
     name = "VECTOR",
@@ -255,7 +266,7 @@ local VECTOR_WITH_VAR_TABLE = {
         return JUMP( nextCont )
     end
 }
-VECTOR_WITH_VAR_TABLE[1] = VECTOR_WITH_VAR_TABLE
+setmetatable( VECTOR_WITH_VAR_TABLE, VECTOR_WITH_VAR_TABLE )
 
 local VECTOR_WITH_EMPTY_TABLE = {
     name = "VECTOR_WITH_EMPTY",
@@ -278,13 +289,13 @@ local VECTOR_WITH_EMPTY_TABLE = {
         return JUMP( nextCont )
     end
 }
-VECTOR_WITH_EMPTY_TABLE[1] = VECTOR_WITH_EMPTY_TABLE
+setmetatable( VECTOR_WITH_EMPTY_TABLE, VECTOR_WITH_EMPTY_TABLE )
 
 local FUNCTION_TABLE = {
     name = "FUNCTION",
 
     enter = function( cont )
-        local arity = cont[3]
+        local arity = cont[2]
         local argv  = ARGUMENTS_STACK
         local rargv = ALLOC() -- REVERSE
 
@@ -295,7 +306,7 @@ local FUNCTION_TABLE = {
             j = j + 1
         end
 
-        return cont[2]( table.unpack( rargv ) )
+        return cont[1]( table.unpack( rargv ) )
     end
 }
 
@@ -303,7 +314,7 @@ local FUNCTION0_TABLE = {
     name = "FUNCTION0",
 
     enter = function( cont )
-        return cont[2]()
+        return cont[1]()
     end
 }
 
@@ -311,7 +322,7 @@ local FUNCTION1_TABLE = {
     name = "FUNCTION1",
 
     enter = function( cont )
-        return cont[2]( POP() )
+        return cont[1]( POP() )
     end
 }
 
@@ -322,9 +333,9 @@ local THUNK_TABLE = {
         PUSH_CONTROL( thunk )
         PUSH_CONTROL( UPDATE_NEXT_TABLE )
 
-        thunk[1] = BLACKHOLE_TABLE
+        setmetatable( thunk, BLACKHOLE_TABLE )
 
-        return thunk[2]()
+        return thunk[1]()
     end,
 }
 
@@ -335,13 +346,13 @@ local APPLY_THUNK_TABLE = {
         PUSH_CONTROL( thunk )
         PUSH_CONTROL( UPDATE_NEXT_TABLE )
 
-        for i = #thunk, 3, -1 do
+        for i = #thunk, 2, -1 do
             PUSH( thunk[i] )
         end
 
-        thunk[1] = BLACKHOLE_TABLE
+        setmetatable( thunk, BLACKHOLE_TABLE )
 
-        return JUMP( thunk[2] )
+        return JUMP( thunk[1] )
     end
 }
 
@@ -349,11 +360,11 @@ local APPLY_TABLE = {
     name = "APPLY",
 
     enter = function( thunk )
-        for i = #thunk, 3, -1 do
+        for i = #thunk, 2, -1 do
             PUSH( thunk[i] )
         end
 
-        return JUMP( thunk[2] )
+        return JUMP( thunk[1] )
     end
 }
 
@@ -362,16 +373,16 @@ local EVAL = function( cont )
 
     while #RETURN_STACK > 0 do
 #ifdef OTRACE
-        print( cont, cont[1].name )
+        print( cont, getmetatable( cont ).name )
 #endif
 #ifdef RTSINFO
         ENTER_COUNT = ENTER_COUNT + 1
 #endif
-        cont = cont[1].enter( cont )
+        cont = getmetatable( cont ).enter( cont )
     end
 
     if cont == EXIT_CODE_TABLE then
-        cont = cont[1].enter( cont )
+        cont = getmetatable( cont ).enter( cont )
     end
 
     return cont
@@ -389,7 +400,7 @@ local THUNK = function( fun )
     THUNK_ALLOCATED = THUNK_ALLOCATED + 1
 #endif
 
-    return ALLOC( THUNK_TABLE, fun )
+    return setmetatable( ALLOC( fun ), THUNK_TABLE )
 end
 
 local FUNCTION = function( arity, fun )
@@ -403,7 +414,7 @@ local FUNCTION = function( arity, fun )
     ALLOCATED = ALLOCATED + 1
 #endif
 
-    return ALLOC( FUNCTION_TABLE, fun, arity )
+    return setmetatable ( ALLOC( fun, arity ), FUNCTION_TABLE )
 end
 
 local FUNCTION0 = function( fun )
@@ -417,7 +428,7 @@ local FUNCTION0 = function( fun )
     ALLOCATED = ALLOCATED + 1
 #endif
 
-    return ALLOC( FUNCTION0_TABLE, fun )
+    return setmetatable( ALLOC( fun ), FUNCTION0_TABLE )
 end
 
 local FUNCTION1 = function( fun )
@@ -431,7 +442,7 @@ local FUNCTION1 = function( fun )
     ALLOCATED = ALLOCATED + 1
 #endif
 
-    return ALLOC( FUNCTION1_TABLE, fun )
+    return setmetatable( ALLOC( fun ), FUNCTION1_TABLE )
 end
 
 local APPLY = function( closure, ... )
@@ -465,10 +476,10 @@ local ENTER = function( cont )
 end
 
 FORCE = function( thunk )
-    if ( type( thunk ) == "table" ) then
+    if ( type( thunk ) == "table" or type( thunk ) == "function" ) then
         thunk = EVAL( thunk )
 
-        for i = 2, #thunk do
+        for i = 1, #thunk do
             thunk[i] = FORCE( thunk[i] )
         end
 
@@ -482,10 +493,10 @@ INSPECT = function( val )
     if type( val ) == "number" then
         io.write( string.format( "%.0f", val ) )
     elseif type( val ) == "table" then
-        io.write( val[1].name )
-        if #val > 1 then
+        io.write( getmetatable( val ).name )
+        if #val > 0 then
             io.write( " { " )
-            for i = 2, #val do
+            for i = 1, #val do
                 INSPECT( val[i] )
             end
             io.write( " } " )

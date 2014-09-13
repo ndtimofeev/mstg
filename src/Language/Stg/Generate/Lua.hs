@@ -134,9 +134,9 @@ infoTablesGen conss = fmap concat $ forM conss $ \(Constructor name xs) -> do
     let obfName = obf (top ++ loc) name Nothing
     let stackVector
             | [] <- xs  = var obfName : var obfName : []
-            | otherwise = var "self" : var obfName : map (tableVal "self" . num) [2..length xs + 1]
+            | otherwise = var "self" : var obfName : map (tableVal "self" . num) [1..length xs]
     let cycleTable
-            | [] <- xs  = [(tableVal obfName (num 1) :: Var) `assign` var obfName]
+            | [] <- xs  = [callFunByName "setmetatable" [var obfName, var obfName]]
             | otherwise = []
     modify $ \s -> s { constrVariables = ((name, obfName) : constrVariables s) }
     return $
@@ -208,14 +208,14 @@ bindingsGen binds = do
             | [] <- vars, ApplyExpr f xs  <- expr    -> do
                 name <- lookupVar (Boxed f)
                 args <- mapM atomGen xs
-                return (TableConst (Field (var (if u then "APPLY_THUNK_TABLE" else "APPLY_TABLE")) : Field (var name) : map Field args))
+                return (callFunByName "setmetatable" [TableConst (Field (var name) : map Field args), var (if u then "APPLY_THUNK_TABLE" else "APPLY_TABLE")])
             | [] <- vars, ConstrExpr (Constructor name []) <- expr -> do
                 name' <- lookupConstr name
                 return (var name')
             | [] <- vars, ConstrExpr (Constructor name atoms) <- expr -> do
                 name' <- lookupConstr name
                 atms' <- mapM atomGen atoms
-                return (TableConst (Field (var name') : map Field atms'))
+                return (callFunByName "setmetatable" [TableConst (map Field atms'), var name'])
             | [] <- vars, u                          -> thunkGen (exprGen expr)
             | otherwise                              -> lambdaAbstractionGen vars (exprGen expr)
     return (zipWith assign names' exprs)
@@ -230,8 +230,10 @@ lambdaAbstractionGen argv gen = createNamespace $ do
     argvRefs <- mapM labelGen argv
     blck     <- gen
     return $ case argv of
-        []   -> callFunByName "FUNCTION0" [EFunDef (FunBody argvRefs False blck)]
-        _ -> callFunByName "FUNCTION0" [EFunDef (FunBody [] False (argvRefs `lassign` (replicate (length argvRefs) (callFunByName "POP" [])) `prependBlock` blck))]
+        []   -> EFunDef (FunBody argvRefs False blck)
+        _ -> EFunDef (FunBody [] False (argvRefs `lassign` (replicate (length argvRefs) (callFunByName "POP" [])) `prependBlock` blck))
+        -- []   -> callFunByName "FUNCTION0" [EFunDef (FunBody argvRefs False blck)]
+        -- _ -> callFunByName "FUNCTION0" [EFunDef (FunBody [] False (argvRefs `lassign` (replicate (length argvRefs) (callFunByName "POP" [])) `prependBlock` blck))]
     -- return $ case argv of
     --     []   -> callFunByName "FUNCTION0" [EFunDef (FunBody argvRefs False blck)]
     --     _:[] -> callFunByName "FUNCTION1" [EFunDef (FunBody argvRefs False blck)]
@@ -402,7 +404,8 @@ continuationWithSwitchCaseGen expr alts
                     , callFunByName "PUSH_CONTROL" [TableConst xs'] ]
             AlgAlts xs  -> do
                 e <- switchClosureGen xs constrPatternExprGen
-                return $ map (\x -> callFunByName "PUSH_CONTROL" [x]) (reverse [var "SWITCH_TABLE", e])
+                -- return $ map (\x -> callFunByName "PUSH_CONTROL" [x]) (reverse [var "SWITCH_TABLE", e])
+                return [callFunByName "PUSH_CONTROL" [e]]
 
         switchClosureGen :: [(Pattern a b, StgExpr)] -> (b -> StgExpr -> Generate (Exp, Block)) -> Generate Exp
         switchClosureGen xs gen = createNamespace $ do
