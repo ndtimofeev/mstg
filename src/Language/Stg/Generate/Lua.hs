@@ -28,6 +28,7 @@ data GeneratorConfig
     | PureGen
     | InlinePrimOps
     | InlineRTS
+    | UglyLightFunction
     deriving (Show, Eq, Ord)
 
 data GeneratorEnv = GeneratorEnv
@@ -90,10 +91,10 @@ pushValues arr exps = case exps of
     [e] -> [(tableVal arr (Unop Len (var arr) + 1) :: Var) `assign` e]
     _   -> ("i" `lassign` Unop Len (var arr)) : zipWith (\n e -> (tableVal arr (var "i" + num n) :: Var) `assign` e) [1..length exps] (reverse exps)
 
-generate :: [Binding] -> [Stat] -> [Stat] -> [TypeR] -> [Stat]
-generate binds rts primops typs = runReader
+generate :: [GeneratorConfig] -> [Binding] -> [Stat] -> [Stat] -> [TypeR] -> [Stat]
+generate gcfgs binds rts primops typs = runReader
     (evalStateT go (GeneratorState [] [] []))
-        (GeneratorEnv (symbolExtract rts ++ idBlackList) [InlinePrimOps] (primOpsExtract primops) typs undefined luaNameObfuscator continuationWithSwitchCaseGen)
+        (GeneratorEnv (symbolExtract rts ++ idBlackList) gcfgs (primOpsExtract primops) typs undefined luaNameObfuscator continuationWithSwitchCaseGen)
         -- (GeneratorEnv (symbolExtract rts ++ idBlackList) [] {- [InlinePrimOps] -} (primOpsExtract primops) typs undefined luaNameObfuscator continuationCaseGen)
         -- (GeneratorEnv (symbolExtract rts ++ idBlackList) [InlinePrimOps] (primOpsExtract primops) typs undefined luaNameObfuscator callCaseGen)
     where
@@ -160,7 +161,7 @@ nameGen lbl mpref = do
         str
             | Boxed (Variable s) <- lbl          = s
             | Unboxed (UnboxedVariable s) <- lbl = s
-            | otherwise                          = undefined
+            | otherwise                          = error "absurd"
 
 labelGen :: Label -> Generate String
 labelGen lbl = case lbl of
@@ -187,7 +188,7 @@ atomGen :: Atom -> Generate Exp
 atomGen at = case at of
     VarAtom lbl        -> liftM var $ lookupVar lbl
     LitAtom (IntLit i) -> return $ num i
-    _                  -> undefined
+    _                  -> error "absurd"
 
 createNamespace :: Generate a -> Generate a
 createNamespace gen = do
@@ -229,15 +230,13 @@ lambdaAbstractionGen :: [Label] -> Generate Block -> Generate Exp
 lambdaAbstractionGen argv gen = createNamespace $ do
     argvRefs <- mapM labelGen argv
     blck     <- gen
+    cfgs     <- asks generatorOpts
+    let fundefTrans
+            | UglyLightFunction `elem` cfgs = id
+            | otherwise                = \e -> callFunByName "FUNCTION0" [e]
     return $ case argv of
-        []   -> EFunDef (FunBody argvRefs False blck)
-        _ -> EFunDef (FunBody [] False (argvRefs `lassign` (replicate (length argvRefs) (callFunByName "POP" [])) `prependBlock` blck))
-        -- []   -> callFunByName "FUNCTION0" [EFunDef (FunBody argvRefs False blck)]
-        -- _ -> callFunByName "FUNCTION0" [EFunDef (FunBody [] False (argvRefs `lassign` (replicate (length argvRefs) (callFunByName "POP" [])) `prependBlock` blck))]
-    -- return $ case argv of
-    --     []   -> callFunByName "FUNCTION0" [EFunDef (FunBody argvRefs False blck)]
-    --     _:[] -> callFunByName "FUNCTION1" [EFunDef (FunBody argvRefs False blck)]
-    --     _    -> callFunByName "FUNCTION"  [num (length argv), EFunDef (FunBody argvRefs False blck)]
+        [] -> fundefTrans $ EFunDef (FunBody argvRefs False blck)
+        _  -> fundefTrans $ EFunDef (FunBody [] False (argvRefs `lassign` (replicate (length argvRefs) (callFunByName "POP" [])) `prependBlock` blck))
 
 exprGen :: StgExpr -> Generate Block
 exprGen expr = case expr of
@@ -402,10 +401,17 @@ continuationWithSwitchCaseGen expr alts
                 return $ reverse
                     [ callFunByName "PUSH_CONTROL" [var "VECTOR_TABLE"]
                     , callFunByName "PUSH_CONTROL" [TableConst xs'] ]
-            AlgAlts xs  -> do
-                e <- switchClosureGen xs constrPatternExprGen
-                -- return $ map (\x -> callFunByName "PUSH_CONTROL" [x]) (reverse [var "SWITCH_TABLE", e])
-                return [callFunByName "PUSH_CONTROL" [e]]
+            AlgAlts xs
+                | [(SPat (Constructor _ labels), expr)] <- xs -> do
+                    e <- lambdaAbstractionGen (Boxed (Variable "hp") : Boxed (Variable "tag") : labels) (exprGen expr)
+                    return [callFunByName "PUSH_CONTROL" [e]]
+                | otherwise -> do
+                    e <- switchClosureGen xs constrPatternExprGen
+                    cfgs <- asks generatorOpts
+                    let switchTable
+                            | UglyLightFunction `elem` cfgs = []
+                            | otherwise                = [callFunByName "PUSH_CONTROL" [var "SWITCH_TABLE"]]
+                    return (callFunByName "PUSH_CONTROL" [e] : switchTable)
 
         switchClosureGen :: [(Pattern a b, StgExpr)] -> (b -> StgExpr -> Generate (Exp, Block)) -> Generate Exp
         switchClosureGen xs gen = createNamespace $ do
@@ -429,6 +435,24 @@ continuationWithSwitchCaseGen expr alts
             ways  <- mapM (\(SPat c, e) -> gen c e) spats
             mblck <- defWay
             return $ EFunDef $ FunBody [] False (Block (map (\x -> x `lassign` callFunByName "POP" []) [node', tag'] ++ [If ways mblck]) Nothing)
+
+        -- extractOrtoCase :: Alts StgExpr -> Generate ([Stat], [Label], StgExpr)
+        -- extractOrtoCase alts = case alts of
+        --     Single e
+        --         | Case (AtomExpr (VarAtom (Boxed v))) alts' <- e -> do
+        --             (sts, lbls, e') <- extractOrtoCase alts'
+        --             return (sts ++ [callFunByName "PUSH_CONTROL" [var "DROP_STACK_ALL_TABLE"]], lbls, e')
+        --         | otherwise          -> return ([callFunByName "PUSH_CONTROL" [var "DROP_STACK_ALL_TABLE"]], [], e)
+        --     VarSingle v e
+        --         | Case (AtomExpr (VarAtom (Boxed v'))) alts' <- e, Boxed v' /= v -> do
+        --             _ <- labelGen v
+        --             (sts, lbls, e') <- extractOrtoCase alts'
+        --             return (sts ++ [callFunByName "PUSH_CONTROL" [var "DROP_STACK_VAR_TABLE"]], lbls ++ [v], e')
+        --         | otherwise -> return ([callFunByName "PUSH_CONTROL" [var "DROP_STACK_VAR_TABLE"]], [v], e)
+        --     AlgAlts xs
+        --         | [(SPat (Constructor _ lbls), Case (AtomExpr (VarAtom (Boxed v))) alts')] <- xs, Boxed v `notElem` lbls -> do
+        --             _ <- mapM labelGen lbls
+        --             (sts, lbls', e') <- extractOrtoCase alts'
 
         constrPatternExprGen :: Constructor Label -> StgExpr -> Generate (Exp, Block)
         constrPatternExprGen (Constructor name lbls) expr = createNamespace $ do

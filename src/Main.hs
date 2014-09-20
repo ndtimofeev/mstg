@@ -113,6 +113,10 @@ options =
                         in return $ opts { readRTSFiles = catch fsRTSRead fsRTSReadException }) "PATH")
             "path to dir with custom rts files"
 
+    , Option "" ["ugly-light-function"]
+            (NoArg $ \opts -> return $ opts { preprocessorTable = ("LFUNCTION", "1") : preprocessorTable opts })
+            "use debug.setmetatable for function object"
+
     , Option "S" ["statistics"]
             (NoArg $ \opts -> return $ opts { preprocessorTable = ("RTSINFO", "1") : preprocessorTable opts })
             "keep end print runtime information about program"
@@ -172,8 +176,12 @@ compilerLuaCode rts bindings opts = intercalate "\n\n"
     [ rts
     , concatMap
         (\b -> (displayS (renderPretty 1 100 (pprint b)) "\n\n"))
-            (generate (stgToStgPipe opts bindings) [] [] [])
+            (generate cfgs (stgToStgPipe opts bindings) [] [] [])
     , "ENTER( " ++ entryThunk opts ++ " )" ]
+    where
+        cfgs
+            | Just _ <- lookup "LFUNCTION" (preprocessorTable opts) = [UglyLightFunction]
+            | otherwise                                             = []
 
 main :: IO ()
 main = do

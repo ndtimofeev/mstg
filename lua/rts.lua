@@ -214,6 +214,8 @@ local UPDATE_NEXT_TABLE = {
 }
 setmetatable( UPDATE_NEXT_TABLE, UPDATE_NEXT_TABLE )
 
+#ifndef VECRET
+#ifndef LFUNCTION
 local SWITCH_TABLE = {
     name = "SWITCH",
     enter = function( cont )
@@ -221,15 +223,20 @@ local SWITCH_TABLE = {
     end
 }
 setmetatable( SWITCH_TABLE, SWITCH_TABLE )
+#endif
+#endif
 
+#ifdef LFUNCTION
 local LIGHT_FUNCTION_TABLE = {
-    name = "LIGHT_FUNCTION_TABLE",
+    name = "LIGHT_FUNCTION",
     enter = function( cont )
         return cont()
     end
 }
 debug.setmetatable( function() end, LIGHT_FUNCTION_TABLE )
+#endif
 
+#ifdef VECRET
 local VECTOR_TABLE = {
     name = "VECTOR",
 
@@ -290,39 +297,13 @@ local VECTOR_WITH_EMPTY_TABLE = {
     end
 }
 setmetatable( VECTOR_WITH_EMPTY_TABLE, VECTOR_WITH_EMPTY_TABLE )
-
-local FUNCTION_TABLE = {
-    name = "FUNCTION",
-
-    enter = function( cont )
-        local arity = cont[2]
-        local argv  = ARGUMENTS_STACK
-        local rargv = ALLOC() -- REVERSE
-
-        local j = 1
-        for i = #argv, #argv - arity + 1, -1 do
-            rargv[j] = argv[i]
-            argv[i] = nil
-            j = j + 1
-        end
-
-        return cont[1]( table.unpack( rargv ) )
-    end
-}
+#endif
 
 local FUNCTION0_TABLE = {
     name = "FUNCTION0",
 
     enter = function( cont )
         return cont[1]()
-    end
-}
-
-local FUNCTION1_TABLE = {
-    name = "FUNCTION1",
-
-    enter = function( cont )
-        return cont[1]( POP() )
     end
 }
 
@@ -403,20 +384,6 @@ local THUNK = function( fun )
     return setmetatable( ALLOC( fun ), THUNK_TABLE )
 end
 
-local FUNCTION = function( arity, fun )
-#ifdef RTSINFO
-    k, a = collectgarbage("count")
-
-    if ( k > MEM_MAX ) then
-        MEM_MAX = k
-    end
-
-    ALLOCATED = ALLOCATED + 1
-#endif
-
-    return setmetatable ( ALLOC( fun, arity ), FUNCTION_TABLE )
-end
-
 local FUNCTION0 = function( fun )
 #ifdef RTSINFO
     k, a = collectgarbage("count")
@@ -429,20 +396,6 @@ local FUNCTION0 = function( fun )
 #endif
 
     return setmetatable( ALLOC( fun ), FUNCTION0_TABLE )
-end
-
-local FUNCTION1 = function( fun )
-#ifdef RTSINFO
-    k, a = collectgarbage("count")
-
-    if ( k > MEM_MAX ) then
-        MEM_MAX = k
-    end
-
-    ALLOCATED = ALLOCATED + 1
-#endif
-
-    return setmetatable( ALLOC( fun ), FUNCTION1_TABLE )
 end
 
 local APPLY = function( closure, ... )
